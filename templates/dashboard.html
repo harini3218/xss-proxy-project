@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Proxy Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            background: #111;
+            color: white;
+            font-family: Arial;
+            padding: 20px;
+        }
+
+        h1 { color: red; }
+
+        .container {
+            display: flex;
+            gap: 30px;
+        }
+
+        .box {
+            background: #222;
+            padding: 20px;
+            border-radius: 10px;
+            flex: 1;
+        }
+
+        .counts div {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+
+        .high { color: red; }
+        .medium { color: orange; }
+        .low { color: lightgreen; }
+
+        /* PIE */
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #chart {
+            max-width: 350px;
+        }
+
+        .graph-box {
+            margin-top: 20px;
+            background: #222;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 10px;
+            border-bottom: 1px solid #444;
+            font-size: 14px;
+        }
+
+        th { color: #aaa; }
+
+        pre {
+            max-width: 350px;
+            overflow-x: auto;
+            color: #0f0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Proxy Dashboard</h1>
+
+<div class="container">
+
+    <!-- LEFT SIDE -->
+    <div class="box">
+        <h2>Attack Summary</h2>
+
+        <div class="counts">
+            <div class="high">🔴 High (XSS): <span id="high">0</span></div>
+            <div class="medium">🟠 Medium: <span id="medium">0</span></div>
+            <div class="low">🟢 Low: <span id="low">0</span></div>
+        </div>
+
+        <!-- BAR GRAPH -->
+        <div class="graph-box">
+            <h3> Attack Distribution</h3>
+            <canvas id="barChart"></canvas>
+        </div>
+
+    </div>
+
+    <!-- RIGHT SIDE -->
+    <div class="box">
+        <h2> Pie Chart</h2>
+        <div class="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<!-- LINE GRAPH -->
+<div class="graph-box">
+    <h2>Attack Trend</h2>
+    <canvas id="lineChart"></canvas>
+</div>
+
+<!-- RECENT ATTACKS -->
+<div class="box">
+    <h2>Recent Attacks</h2>
+
+    <table>
+        <tr>
+            <th>Level</th>
+            <th>Type</th>
+            <th>Time</th>
+            <th>Payload</th>
+        </tr>
+        <tbody id="logs"></tbody>
+    </table>
+</div>
+
+<script>
+
+let pieChart, barChart, lineChart;
+let history = [];
+
+//  ESCAPE FUNCTION (IMPORTANT)
+function escapeHTML(str) {
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+// PIE
+pieChart = new Chart(document.getElementById('chart'), {
+    type: 'pie',
+    data: {
+        labels: ['High', 'Medium', 'Low'],
+        datasets: [{
+            data: [0,0,0],
+            backgroundColor: ['red', 'orange', 'green']
+        }]
+    }
+});
+
+// BAR
+barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+        labels: ['High', 'Medium', 'Low'],
+        datasets: [{
+            label: 'Attacks',
+            data: [0,0,0],
+            backgroundColor: ['red', 'orange', 'green']
+        }]
+    }
+});
+
+// LINE
+lineChart = new Chart(document.getElementById('lineChart'), {
+    type: 'line',
+    data: {
+        labels: [],
+        datasets: [{
+            label: 'Total Attacks',
+            data: [],
+            borderColor: 'cyan',
+            fill: false
+        }]
+    }
+});
+
+// LOAD STATS
+function loadStats() {
+    fetch('/stats')
+    .then(res => res.json())
+    .then(data => {
+
+        document.getElementById('high').innerText = data.high;
+        document.getElementById('medium').innerText = data.medium;
+        document.getElementById('low').innerText = data.low;
+
+        let total = data.high + data.medium + data.low;
+
+        // UPDATE PIE
+        pieChart.data.datasets[0].data = [data.high, data.medium, data.low];
+        pieChart.update();
+
+        // UPDATE BAR
+        barChart.data.datasets[0].data = [data.high, data.medium, data.low];
+        barChart.update();
+
+        // UPDATE LINE
+        let time = new Date().toLocaleTimeString();
+
+        history.push(total);
+
+        lineChart.data.labels.push(time);
+        lineChart.data.datasets[0].data = history;
+
+        if (history.length > 10) {
+            history.shift();
+            lineChart.data.labels.shift();
+        }
+
+        lineChart.update();
+    });
+}
+
+// LOAD LOGS (SAFE)
+function loadLogs() {
+    fetch('/logs')
+    .then(res => res.json())
+    .then(data => {
+
+        let html = "";
+
+        data.forEach(log => {
+            html += `
+                <tr>
+                    <td>${escapeHTML(log.level)}</td>
+                    <td>${escapeHTML(log.type)}</td>
+                    <td>${escapeHTML(log.time)}</td>
+                    <td><pre>${escapeHTML(log.data)}</pre></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('logs').innerHTML = html;
+    });
+}
+
+// LIVE UPDATE
+setInterval(() => {
+    loadStats();
+    loadLogs();
+}, 2000);
+
+// INITIAL
+loadStats();
+loadLogs();
+
+</script>
+
+</body>
+</html>
